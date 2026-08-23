@@ -4,11 +4,14 @@ import json
 import datetime
 import os
 import random
+from dotenv import load_dotenv
 
-TOKEN = "YOUR_BOT_TOKEN_HERE"
-YOUR_USER_ID = 123456789  # ТВІЙ ID КОРИСТУВАЧА (заміни!)
+# ====== ЗАВАНТАЖУЄМО ЗМІННІ З .env ======
+load_dotenv()
 
-# Файл для збереження даних
+TOKEN = os.getenv('DISCORD_TOKEN')
+YOUR_USER_ID = int(os.getenv('YOUR_USER_ID', '0'))
+
 DATA_FILE = "users_data.json"
 
 def load_data():
@@ -27,31 +30,26 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 @bot.event
 async def on_ready():
     print(f'✅ Бот {bot.user} запущено!')
+    print(f'📊 Підключено до {len(bot.guilds)} серверів')
     
-    # Перевіряємо чи зможемо відправити тобі повідомлення
     try:
         user = await bot.fetch_user(YOUR_USER_ID)
-        await user.send("✅ Бот запущено! Тепер я буду сповіщати тебе про нових учасників у голосових каналах.")
-        print("📨 Тестове повідомлення відправлено тобі в ЛС")
+        await user.send("✅ Бот запущено на Render! Тепер я буду сповіщати тебе про нових учасників.")
+        print("📨 Тестове повідомлення відправлено тобі в ЛС!")
     except Exception as e:
-        print(f"⚠️ Не вдалося відправити повідомлення: {e}")
-        print("📌 Переконайся, що в тебе відкриті ЛС від учасників сервера")
+        print(f"⚠️ Не вдалося відправити тестове повідомлення: {e}")
 
 @bot.event
 async def on_voice_state_update(member, before, after):
-    """Відстежуємо підключення до голосових каналів"""
+    """Відстежуємо нових учасників у голосових каналах"""
     
-    # Перевіряємо, чи користувач ПІДКЛЮЧИВСЯ до голосового каналу
     if before.channel is None and after.channel is not None:
-        
         user_id = str(member.id)
         data = load_data()
         
-        # ====== ПЕРЕВІРКА: ЧИ НОВИЙ КОРИСТУВАЧ? ======
         is_new_user = user_id not in data
         
         if is_new_user:
-            # Це НОВИЙ користувач - записуємо його
             ip = f"{random.randint(1,255)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(0,255)}"
             
             data[user_id] = {
@@ -64,17 +62,15 @@ async def on_voice_state_update(member, before, after):
                 "voice_joins": 1,
                 "server": member.guild.name,
                 "channel": after.channel.name,
-                "notified": False  # Позначка, що сповіщення відправлено
+                "notified": False
             }
             save_data(data)
             
-            # ====== ВІДПРАВЛЯЄМО В ЛИЧКУ ТОБІ ======
             try:
                 user = await bot.fetch_user(YOUR_USER_ID)
                 
-                # Створюємо красиве повідомлення
                 embed = discord.Embed(
-                    title="🎉 НОВИЙ УЧАСНИК У ГОЛОСОВОМУ КАНАЛІ!",
+                    title="🎉 НОВИЙ УЧАСНИК!",
                     description=f"**{member.name}** вперше приєднався до голосового каналу!",
                     color=discord.Color.gold(),
                     timestamp=datetime.datetime.now()
@@ -82,93 +78,30 @@ async def on_voice_state_update(member, before, after):
                 
                 embed.add_field(name="👤 Ім'я", value=member.name, inline=True)
                 embed.add_field(name="🆔 ID", value=member.id, inline=True)
-                embed.add_field(name="🌐 IP-адреса", value=ip, inline=True)
+                embed.add_field(name="🌐 IP", value=ip, inline=True)
                 embed.add_field(name="📌 Сервер", value=member.guild.name, inline=True)
                 embed.add_field(name="🔊 Канал", value=after.channel.name, inline=True)
-                embed.add_field(name="📅 Час", value=datetime.datetime.now().strftime("%H:%M:%S"), inline=True)
-                
-                # Додаємо аватарку
                 embed.set_thumbnail(url=member.display_avatar.url)
-                
-                # Додаємо футер
-                embed.set_footer(text=f"Всього унікальних учасників: {len(data)}")
+                embed.set_footer(text=f"Всього унікальних: {len(data)}")
                 
                 await user.send(embed=embed)
-                print(f"📨 Відправлено в ЛС про нового учасника: {member.name}")
+                print(f"📨 Відправлено в ЛС: {member.name}")
                 
-                # Позначаємо, що сповіщення відправлено
                 data[user_id]["notified"] = True
                 save_data(data)
                 
             except Exception as e:
                 print(f"❌ Помилка відправки в ЛС: {e}")
-                # Якщо не вийшло - спробуємо відправити в канал
-                log_channel = discord.utils.get(member.guild.text_channels, name="ip-logs")
-                if log_channel:
-                    await log_channel.send(f"⚠️ Не вдалося відправити в ЛС, ось дані про {member.name}: IP {ip}")
-        
         else:
-            # Це вже ІСНУЮЧИЙ користувач - просто оновлюємо статистику
             data[user_id]["voice_joins"] += 1
             data[user_id]["last_voice_join"] = datetime.datetime.now().isoformat()
             data[user_id]["channel"] = after.channel.name
             save_data(data)
-            
-            # Логуємо в консоль (без відправки в ЛС)
-            print(f"🔄 {member.name} повернувся в голосовий канал (разів: {data[user_id]['voice_joins']})")
-
-@bot.command(name='list_new')
-async def list_new_users(ctx):
-    """Показати всіх нових користувачів, про яких було відправлено сповіщення"""
-    if ctx.author.id != YOUR_USER_ID:
-        await ctx.send("⛔ Ця команда тільки для власника бота!")
-        return
-    
-    data = load_data()
-    if not data:
-        await ctx.send("📊 Немає даних про користувачів")
-        return
-    
-    new_users = {uid: info for uid, info in data.items() if info.get('notified', False)}
-    
-    if not new_users:
-        await ctx.send("📊 Немає нових користувачів")
-        return
-    
-    embed = discord.Embed(
-        title="📋 Список нових користувачів",
-        color=discord.Color.green(),
-        timestamp=datetime.datetime.now()
-    )
-    
-    description = ""
-    for uid, info in list(new_users.items())[:10]:  # Топ-10
-        description += f"**{info.get('username', 'Unknown')}**\n"
-        description += f"🆔 `{uid}`\n"
-        description += f"🌐 IP: {info.get('ip', 'Unknown')}\n"
-        description += f"📅 Приєднався: {info.get('first_join', 'Unknown')[:16]}\n"
-        description += f"🔗 Всього підключень: {info.get('voice_joins', 1)}\n\n"
-    
-    embed.description = description[:4096]
-    await ctx.send(embed=embed)
-
-@bot.command(name='reset')
-async def reset_tracking(ctx):
-    """Скинути відстеження (щоб знову отримувати сповіщення про всіх)"""
-    if ctx.author.id != YOUR_USER_ID:
-        await ctx.send("⛔ Тільки для власника!")
-        return
-    
-    data = load_data()
-    for uid in data:
-        data[uid]["notified"] = False
-    save_data(data)
-    
-    await ctx.send("🔄 Відстеження скинуто! Тепер будуть приходити сповіщення про ВСІХ учасників")
+            print(f"🔄 {member.name} повернувся (разів: {data[user_id]['voice_joins']})")
 
 @bot.command(name='stats')
 async def show_stats(ctx):
-    """Показати загальну статистику"""
+    """Показати статистику"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Тільки для власника!")
         return
@@ -178,35 +111,59 @@ async def show_stats(ctx):
     notified = len([u for u in data.values() if u.get('notified', False)])
     
     embed = discord.Embed(
-        title="📊 Статистика бота",
+        title="📊 Статистика",
         color=discord.Color.blue()
     )
-    embed.add_field(name="👥 Всього унікальних учасників", value=total, inline=True)
+    embed.add_field(name="👥 Всього учасників", value=total, inline=True)
     embed.add_field(name="📨 Відправлено сповіщень", value=notified, inline=True)
-    embed.add_field(name="📁 Збережено в файлі", value=DATA_FILE, inline=False)
-    
     await ctx.send(embed=embed)
 
-@bot.command(name='clear')
-async def clear_data(ctx):
-    """Очистити всі дані (тільки для власника)"""
+@bot.command(name='list')
+async def list_users(ctx):
+    """Список нових користувачів"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Тільки для власника!")
         return
     
-    # Запитуємо підтвердження
-    await ctx.send("⚠️ Ти впевнений, що хочеш очистити всі дані? Напиши `так` для підтвердження")
+    data = load_data()
+    new_users = {uid: info for uid, info in data.items() if info.get('notified', False)}
     
-    def check(m):
-        return m.author.id == YOUR_USER_ID and m.content.lower() == "так"
+    if not new_users:
+        await ctx.send("📊 Немає нових користувачів")
+        return
     
-    try:
-        await bot.wait_for('message', timeout=30.0, check=check)
-        save_data({})
-        await ctx.send("✅ Всі дані очищено!")
-    except:
-        await ctx.send("❌ Операцію скасовано (тайм-аут)")
+    embed = discord.Embed(
+        title="📋 Нові користувачі",
+        color=discord.Color.green()
+    )
+    
+    desc = ""
+    for uid, info in list(new_users.items())[:10]:
+        desc += f"**{info.get('username')}** - IP: {info.get('ip')}\n"
+    
+    embed.description = desc
+    await ctx.send(embed=embed)
 
-# ====== ЗАПУСК ======
+@bot.command(name='reset')
+async def reset_tracking(ctx):
+    """Скинути відстеження"""
+    if ctx.author.id != YOUR_USER_ID:
+        await ctx.send("⛔ Тільки для власника!")
+        return
+    
+    data = load_data()
+    for uid in data:
+        data[uid]["notified"] = False
+    save_data(data)
+    await ctx.send("🔄 Відстеження скинуто!")
+
 if __name__ == "__main__":
+    if not TOKEN:
+        print("❌ ПОМИЛКА: DISCORD_TOKEN не знайдено!")
+        print("📌 Додай змінну DISCORD_TOKEN на Render")
+        exit(1)
+    
+    if YOUR_USER_ID == 0:
+        print("⚠️ ПОПЕРЕДЖЕННЯ: YOUR_USER_ID не налаштовано!")
+    
     bot.run(TOKEN)
