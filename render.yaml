@@ -3,7 +3,7 @@ services:
     name: mossa
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: python bot1.py
     envVars:
       - key: DISCORD_TOKEN
         sync: false
