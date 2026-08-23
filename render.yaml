@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: discord-ip-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: YOUR_USER_ID
+        sync: false
+    plan: free
+    autoDeploy: true
