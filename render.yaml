@@ -2,12 +2,17 @@ services:
   - type: web
     name: discord-ip-bot
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
       - key: DISCORD_TOKEN
         sync: false
       - key: YOUR_USER_ID
         sync: false
+      - key: RENDER_URL
+        value: https://discord-ip-bot.onrender.com
     plan: free
     autoDeploy: true
+    pythonVersion: 3.11.0
